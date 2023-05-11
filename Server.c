@@ -11,8 +11,9 @@ int stdin_fd = - 1, listening_fd4 = -1, listening_fd6 = -1, chat_fd = -1, commun
 int poll_size = 0 ;
 struct pollfd *pfds ;
 char *out_msg, *recv_buff, *test_buff ;
-int is_to_send ;
+int is_to_send = 0 ;
 int combination = 0 ;
+int bytes_received = 0 ;
 void set_stdin_events(){
     stdin_fd = fileno(stdin);
     add_to_poll(&pfds, stdin_fd, POLLIN, 0, MAX_PFD, &poll_size);
@@ -47,11 +48,27 @@ int set_combination(){
 }
 
 void check_for_requests(){
+
     if(combination == 0){
         if(set_combination()){
             if(combination == TCP_IPV4){
                 strcpy(out_msg, IP_ADDR) ;
                 is_to_send = 1 ;
+            }else if(combination == TCP_IPV6){
+                strcpy(out_msg, IPV6_ADDR) ;
+                is_to_send = 1 ;
+            }else if(combination == UDP_IPV4){
+                communication_fd = create_udp_ipv4_socket(NULL) ;
+                char* port = get_sock_port(communication_fd) ;
+                strcpy(out_msg, port) ;
+                is_to_send = 1 ;
+                add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
+            }else if(combination == UDP_IPV6){
+                communication_fd = create_udp_ipv6_socket(NULL) ;
+                char* port = get_sock_port(communication_fd) ;
+                strcpy(out_msg, port) ;
+                is_to_send = 1 ;
+                add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
             }
         }
 
@@ -67,7 +84,6 @@ int main(int argc, char* argv[]){
     pfds = malloc(sizeof *pfds * MAX_PFD);
     set_stdin_events() ;
     set_listening_sockets(port) ;
-    printf("POLLSIZE: %d\n", poll_size) ;
     while(1){
         int poll_count = poll(pfds, poll_size, -1) ;
         if(poll_count < 0){
@@ -78,8 +94,7 @@ int main(int argc, char* argv[]){
             for (int i = 0; i < poll_size; i++) {
                 int current_fd = pfds[i].fd ;
                 if(pfds[i].revents & POLLIN){
-                    if(current_fd == listening_fd4){
-                        printf("SHit polled + %d\n", i) ;
+                    if(current_fd == listening_fd4 || current_fd == listening_fd6){
                         int newfd = accept_socket(current_fd) ;
                         printf("New connection established.. \n") ;
                         printf("Size: %d\n", poll_size) ;
@@ -111,7 +126,8 @@ int main(int argc, char* argv[]){
                         }
                     }else if(current_fd == communication_fd) {
                         int nbytes = recv(pfds[i].fd, test_buff, GENERATED_DATA_LEN, 0);
-                        printf("Im communicating!! got %d bytes\n",nbytes) ;
+                        bytes_received += nbytes ;
+                        printf("bytes received: %d Total bytes: %d\n",nbytes, bytes_received) ;
                         int sender_fd = pfds[i].fd;
                         if (nbytes <= 0) {
                             if (nbytes == 0) {
@@ -123,8 +139,10 @@ int main(int argc, char* argv[]){
                             remove_from_poll(&pfds, &poll_size, i);
                         } else {
                             test_buff[nbytes] = '\0';
-                            check_for_requests() ;
-//                            printf("%s\n", test_buff);
+                            if(combination == UDP_IPV4 || combination == UDP_IPV6){
+                            strcpy(out_msg, "ACK") ;
+                            is_to_send = 1 ;
+                            }
                         }
                     }else if(current_fd == stdin_fd){
                         int ret = read(pfds[i].fd, out_msg, 1023);
@@ -143,6 +161,7 @@ int main(int argc, char* argv[]){
                         memset(out_msg, '\0', 1024) ;
                     }
                 }
+//                            printf("%s\n", test_buff);
             }
         }
     }
