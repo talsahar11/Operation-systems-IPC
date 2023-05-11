@@ -6,10 +6,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
-
+#include <sys/un.h>
 #define IP_ADDR "127.0.0.1"
 #define IPV6_ADDR "::1"
-
+#define UDS_LISTENING_PATH "/tmp/server_sockk"
+#define UDS_COMM_PATH "/tmp/uds_comm"
 #define TCP_IPV4 1
 #define TCP_IPV6 2
 #define UDP_IPV4 3
@@ -89,7 +90,7 @@ int create_listening_socket_ipv4(int port)
     {
         perror("Failed to listen ");
     }
-    printf("Listening for connections... \n");
+    printf("Listening for connections... shity\n");
     return sock_fd;
 }
 int create_listening_socket_ipv6(int port)
@@ -116,7 +117,42 @@ int create_listening_socket_ipv6(int port)
     {
         perror("Failed to listen");
     }
+    printf("listening for ipv6....\n");
     return sock_fd;
+}
+
+int create_listening_socket_udss()
+{
+    int fd;
+    struct sockaddr_un serverAddr;
+
+    // Create a UDS socket
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0)
+    {
+        perror("Error in socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Configure server address settings
+    serverAddr.sun_family = AF_UNIX;
+    strcpy(serverAddr.sun_path, UDS_LISTENING_PATH);
+
+    printf("listening for shit....\n");
+    // Bind the socket to the server address
+    if (bind(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
+    {
+        perror("Error in bind");
+        exit(EXIT_FAILURE);
+    }
+
+    // Listen for incoming connections
+    if (listen(fd, 1) < 0)
+    {
+        perror("Error in listen");
+        exit(EXIT_FAILURE);
+    }
+    return fd;
 }
 
 int accept_socket(int listening_fd)
@@ -145,6 +181,18 @@ int accept_socket(int listening_fd)
                newfd);
     }
     return newfd;
+}
+
+int accept_udss_socket(int listening_fd)
+{
+    // Accept a client connection
+    int client_fd = accept(listening_fd, NULL, NULL);
+    if (client_fd < 0)
+    {
+        perror("Error in accept");
+        exit(EXIT_FAILURE);
+    }
+    return client_fd;
 }
 
 int create_tcp_ipv4_sock(char *ip, int port)
@@ -257,7 +305,7 @@ int create_udp_ipv6_socket(char *data)
     {
         struct sockaddr_in6 serverAddr;
         serverAddr.sin6_family = AF_INET6;
-        serverAddr.sin6_port = htons(atoi(data)) ;
+        serverAddr.sin6_port = htons(atoi(data));
         if (inet_pton(AF_INET6, IPV6_ADDR, &(serverAddr.sin6_addr)) != 1)
         {
             perror("Invalid IPv6 address");
@@ -285,6 +333,69 @@ char *get_sock_port(int fd)
     return port_str;
 }
 
+int create_udsd_socket(char *path)
+{
+    int fd;
+    struct sockaddr_un serverAddr;
+
+    // Create a UDS socket
+    fd = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (fd < 0)
+    {
+        perror("Error in socket");
+        exit(EXIT_FAILURE);
+    }
+    if (path == NULL)
+    {
+        // Configure server address settings
+        serverAddr.sun_family = AF_UNIX;
+        strcpy(serverAddr.sun_path, UDS_COMM_PATH);
+
+        // Bind the socket to the server address
+        if (bind(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
+        {
+            perror("Error in bind");
+            exit(EXIT_FAILURE);
+        }
+    }else{
+        serverAddr.sun_family = AF_UNIX;
+        strcpy(serverAddr.sun_path, path);
+        // Connect to the server
+        if (connect(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
+        {
+            perror("Error in connect");
+            exit(EXIT_FAILURE);
+        }
+    }
+    return fd;
+}
+
+int create_udss_socket(char *path)
+{
+    int fd;
+    struct sockaddr_un serverAddr;
+
+    // Create a UDS socket
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (fd < 0)
+    {
+        perror("Error in socket");
+        exit(EXIT_FAILURE);
+    }
+
+    // Configure server address settings
+    serverAddr.sun_family = AF_UNIX;
+    strcpy(serverAddr.sun_path, path);
+
+    // Connect to the server
+    if (connect(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
+    {
+        perror("Error in connect");
+        exit(EXIT_FAILURE);
+    }
+    return fd;
+}
+
 int create_communication_fd(int strategy, char *data, int port)
 {
     int fd = -1;
@@ -303,8 +414,10 @@ int create_communication_fd(int strategy, char *data, int port)
         fd = create_udp_ipv6_socket(data);
         break;
     case UDS_DGRAM:
+        fd = create_udsd_socket(data);
         break;
     case UDS_STREAM:
+        fd = create_udss_socket(data);
         break;
     case MMAP_FNAME:
         break;

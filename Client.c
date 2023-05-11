@@ -19,7 +19,7 @@ char *type, *param;
 int combination = 0;
 int is_test = 0;
 int is_end = 0;
-int is_acked = 1 ;
+int is_acked = 1;
 int udp_port = 0;
 int offset = 0;
 
@@ -125,12 +125,20 @@ void handle_response(char *data)
         case UDP_IPV6:
             communication_fd = create_communication_fd(combination, data, 0);
             break;
+        case UDS_DGRAM:
+            communication_fd = create_communication_fd(combination, data, 0);
+            break;
+        case UDS_STREAM:
+            communication_fd = create_communication_fd(combination, data, 0);
+            break;
         }
         add_to_poll(&pfds, communication_fd, 0, POLLOUT, MAX_PFD, &poll_size);
-        is_end = 1 ;
+        is_end = 1;
     }
-    else{
-        if(strcmp(recv_buff, "ACK") == 0){
+    else
+    {
+        if (strcmp(recv_buff, "ACK") == 0)
+        {
             is_acked = 1;
         }
     }
@@ -231,29 +239,38 @@ int main(int argc, char *argv[])
                     {
                         if (current_fd == communication_fd)
                         {
-                            if (offset == GENERATED_DATA_LEN)
+
+                            if (is_acked)
                             {
-                                close(communication_fd);
-                            }
-                            else
-                            {
-                                if(is_acked){
-                                int bytes = send(pfds[i].fd, test_buff + offset ,(offset + CHUNKSIZE <= GENERATED_DATA_LEN) ? 
-                                                                                   CHUNKSIZE : GENERATED_DATA_LEN - offset, 0);
-                                if(combination == UDP_IPV4 || combination == UDP_IPV6){
-                                    is_acked = 0 ;
+                                int bytes = send(pfds[i].fd, test_buff + offset, (offset + CHUNKSIZE <= GENERATED_DATA_LEN) ? CHUNKSIZE : GENERATED_DATA_LEN - offset, 0);
+                                if (combination == UDP_IPV4 || combination == UDP_IPV6 || combination == UDS_DGRAM)
+                                {
+                                    is_acked = 0;
                                 }
                                 if (bytes == -1)
                                 {
                                     perror("Failed sending: ");
-                                    return 0 ;
+                                    return 0;
                                 }
                                 else
                                 {
                                     offset += bytes;
                                 }
                                 printf("sent %d bytes, Total of: %d!\n", bytes, offset);
+                            }
+                            if (offset == GENERATED_DATA_LEN)
+                            {
+                                printf("closingggg\n");
+
+                                if (remove("/tmp/server_sockk") == 0 && remove("/tmp/uds_comm") == 0)
+                                {
+                                    printf("Socket file deleted successfully.\n");
                                 }
+                                else
+                                {
+                                    printf("Unable to delete the socket file.\n");
+                                }
+                                close(communication_fd);
                             }
                         }
                     }

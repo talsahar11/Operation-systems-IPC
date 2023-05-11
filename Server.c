@@ -4,10 +4,10 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include "NC_Utils.c"
-#define MAX_PFD 5
+#define MAX_PFD 6
 #define GENERATED_DATA_LEN 100000000
 int port ;
-int stdin_fd = - 1, listening_fd4 = -1, listening_fd6 = -1, chat_fd = -1, communication_fd = - 1;
+int stdin_fd = - 1, listening_fd4 = -1, listening_fd6 = -1, listening_fd_udss = -1, chat_fd = -1, communication_fd = - 1;
 int poll_size = 0 ;
 struct pollfd *pfds ;
 char *out_msg, *recv_buff, *test_buff ;
@@ -22,8 +22,10 @@ void set_stdin_events(){
 void set_listening_sockets(int port){
     listening_fd4 = create_listening_socket_ipv4(port) ;
     listening_fd6 = create_listening_socket_ipv6(port) ;
+    listening_fd_udss = create_listening_socket_udss() ;
     add_to_poll(&pfds, listening_fd4, POLLIN, 0, MAX_PFD, &poll_size) ;
     add_to_poll(&pfds, listening_fd6, POLLIN, 0, MAX_PFD, &poll_size) ;
+    add_to_poll(&pfds, listening_fd_udss, POLLIN, 0, MAX_PFD, &poll_size) ;
 }
 
 int set_combination(){
@@ -69,6 +71,14 @@ void check_for_requests(){
                 strcpy(out_msg, port) ;
                 is_to_send = 1 ;
                 add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
+            }else if(combination == UDS_STREAM){
+                strcpy(out_msg, UDS_LISTENING_PATH) ;
+                is_to_send = 1 ;
+            }else if(combination == UDS_DGRAM){
+                communication_fd = create_udsd_socket(NULL) ;
+                strcpy(out_msg, UDS_COMM_PATH) ;
+                is_to_send = 1 ;
+                add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
             }
         }
 
@@ -98,14 +108,19 @@ int main(int argc, char* argv[]){
                         int newfd = accept_socket(current_fd) ;
                         printf("New connection established.. \n") ;
                         printf("Size: %d\n", poll_size) ;
-                        if(poll_size == 3){
+                        if(poll_size == 4){
                             chat_fd = newfd ;
                             add_to_poll(&pfds, chat_fd, POLLIN, POLLOUT, MAX_PFD, &poll_size) ;
                         }else {
                             communication_fd = newfd ;
-                            add_to_poll(&pfds, newfd, POLLIN, 0, MAX_PFD, &poll_size) ;
+                            add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
                             printf("%d added to poll, events: %d\n", newfd, pfds[poll_size-1].events);
                         }
+                    }
+                    if(current_fd == listening_fd_udss){
+                        communication_fd = accept_udss_socket(listening_fd_udss) ;
+                            add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
+                            printf("%d added to poll, events: %d\n", communication_fd, pfds[poll_size-1].events);
                     }
                     if(current_fd == chat_fd){
 
@@ -139,7 +154,7 @@ int main(int argc, char* argv[]){
                             remove_from_poll(&pfds, &poll_size, i);
                         } else {
                             test_buff[nbytes] = '\0';
-                            if(combination == UDP_IPV4 || combination == UDP_IPV6){
+                            if(combination == UDP_IPV4 || combination == UDP_IPV6 || combination == UDS_DGRAM){
                             strcpy(out_msg, "ACK") ;
                             is_to_send = 1 ;
                             }
