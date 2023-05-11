@@ -7,10 +7,15 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/un.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+
+#define GENERATED_DATA_LEN 100000000
 #define IP_ADDR "127.0.0.1"
 #define IPV6_ADDR "::1"
 #define UDS_LISTENING_PATH "/tmp/server_sockk"
 #define UDS_COMM_PATH "/tmp/uds_comm"
+#define MMAP_PATH "mmap_p"
 #define TCP_IPV4 1
 #define TCP_IPV6 2
 #define UDP_IPV4 3
@@ -396,6 +401,39 @@ int create_udss_socket(char *path)
     return fd;
 }
 
+void* mmap_file_c(){
+        printf("Shit\n") ;
+    FILE* file = fopen(MMAP_PATH,"w");
+    fclose(file);
+    int fd = open(MMAP_PATH, O_RDWR );
+        if (fd == -1) {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+        printf("Shit\n") ;
+        void* mappedAddr = mmap(NULL, GENERATED_DATA_LEN, PROT_WRITE, MAP_SHARED, fd, 0);
+        if (mappedAddr == MAP_FAILED) {
+            perror("mmap");
+            exit(EXIT_FAILURE);
+    }
+    return mappedAddr ;
+}
+
+void* mmap_file_s(){
+    int fd = open(MMAP_PATH, O_RDONLY | O_CREAT);
+        if (fd == -1) {
+            perror("open");
+            exit(EXIT_FAILURE);
+        }
+
+        void* mappedAddr = mmap(NULL, GENERATED_DATA_LEN, PROT_READ, MAP_SHARED, fd, 0);
+        if (mappedAddr == MAP_FAILED) {
+            perror("mmap");
+            exit(EXIT_FAILURE);
+    }
+    return mappedAddr ;
+}
+
 int create_communication_fd(int strategy, char *data, int port)
 {
     int fd = -1;
@@ -420,6 +458,7 @@ int create_communication_fd(int strategy, char *data, int port)
         fd = create_udss_socket(data);
         break;
     case MMAP_FNAME:
+        
         break;
     case PIPE_FNAME:
         break;

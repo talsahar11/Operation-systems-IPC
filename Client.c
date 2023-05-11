@@ -6,7 +6,6 @@
 #include <poll.h>
 #include "NC_Utils.c"
 #define MAX_PFD 3
-#define GENERATED_DATA_LEN 100000000
 #define CHUNKSIZE 8192
 char *ip;
 int port;
@@ -22,7 +21,7 @@ int is_end = 0;
 int is_acked = 1;
 int udp_port = 0;
 int offset = 0;
-
+void* mapped_address = NULL ;
 void set_stdin_events()
 {
     stdin_fd = fileno(stdin);
@@ -58,7 +57,7 @@ void set_chat_socket(char *ip, int port)
         perror("Failed to connect to the server ");
         exit(-1);
     }
-    printf("Connection established.");
+    printf("Connection established.\n");
     add_to_poll(&pfds, chat_fd, POLLIN, POLLOUT, MAX_PFD, &poll_size);
 }
 void set_combination()
@@ -131,6 +130,9 @@ void handle_response(char *data)
         case UDS_STREAM:
             communication_fd = create_communication_fd(combination, data, 0);
             break;
+        case MMAP_FNAME:
+            communication_fd = create_communication_fd(combination, data, 0);
+            break;
         }
         add_to_poll(&pfds, communication_fd, 0, POLLOUT, MAX_PFD, &poll_size);
         is_end = 1;
@@ -157,17 +159,24 @@ int main(int argc, char *argv[])
     set_chat_socket(ip, port);
     if (argc == 5)
     {
+        generate_data();
         type = argv[3];
         param = argv[4];
         is_test = 1;
         set_combination();
+        if(combination == MMAP_FNAME){
+            mapped_address = mmap_file_c() ;
+            memcpy(mapped_address, test_buff, GENERATED_DATA_LEN) ;
+            strcpy(out_msg, "mmap ready") ;
+        }else{
         char msg[20];
         strcpy(msg, type);
         strcat(msg, " ");
         strcat(msg, param);
         strcpy(out_msg, msg);
+        }
         is_to_send = 1;
-        generate_data();
+        
     }
 
     while (1)

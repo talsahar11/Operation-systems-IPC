@@ -14,6 +14,7 @@ char *out_msg, *recv_buff, *test_buff ;
 int is_to_send = 0 ;
 int combination = 0 ;
 int bytes_received = 0 ;
+void* mapped_address = NULL ;
 void set_stdin_events(){
     stdin_fd = fileno(stdin);
     add_to_poll(&pfds, stdin_fd, POLLIN, 0, MAX_PFD, &poll_size);
@@ -41,7 +42,7 @@ int set_combination(){
         combination = UDS_DGRAM ;
     }else if(strcmp(recv_buff, "uds stream") == 0){
         combination = UDS_STREAM ;
-    }else if(strcmp(recv_buff, "mmap filename") == 0){
+    }else if(strcmp(recv_buff, "mmap ready") == 0){
         combination = MMAP_FNAME ;
     }else if(strcmp(recv_buff, "pipe filename") == 0){
         combination = PIPE_FNAME ;
@@ -79,6 +80,10 @@ void check_for_requests(){
                 strcpy(out_msg, UDS_COMM_PATH) ;
                 is_to_send = 1 ;
                 add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
+            }else if(combination == MMAP_FNAME){
+                mapped_address = mmap_file_s() ;
+                memcpy(test_buff, mapped_address, GENERATED_DATA_LEN) ;
+                printf("after test: %s\n" , test_buff);
             }
         }
 
@@ -90,7 +95,8 @@ int main(int argc, char* argv[]){
     port = atoi(argv[1]) ;
     out_msg = malloc(1024) ;
     recv_buff = malloc(1024) ;
-    test_buff = malloc(GENERATED_DATA_LEN) ;
+    test_buff = calloc(GENERATED_DATA_LEN, 1) ;
+    printf("test: %s", test_buff) ;
     pfds = malloc(sizeof *pfds * MAX_PFD);
     set_stdin_events() ;
     set_listening_sockets(port) ;
