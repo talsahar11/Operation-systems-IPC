@@ -4,8 +4,22 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
 #define IP_ADDR "127.0.0.1"
 #define IPV6_ADDR "::1"
+
+#define TCP_IPV4 1
+#define TCP_IPV6 2
+#define UDP_IPV4 3
+#define UDP_IPV6 4
+#define UDS_DGRAM 5
+#define UDS_STREAM 6
+#define MMAP_FNAME 7
+#define PIPE_FNAME 8
+
+int yes = 1 ;
 
 
 void *get_in_addr(struct sockaddr *sa)
@@ -109,4 +123,74 @@ int accept_socket(int listening_fd){
                newfd);
     }
     return newfd ;
+}
+
+int create_tcp_ipv4_sock(char* ip, int port){
+    int fd = -1 ;
+    struct sockaddr_in serverAddress ;
+    memset(serverAddress.sin_zero, 0, sizeof(serverAddress.sin_zero));
+    serverAddress.sin_port = htons(port) ;
+    serverAddress.sin_family = AF_INET ;
+    inet_pton(AF_INET, ip, &(serverAddress.sin_addr));
+    fd = socket(AF_INET, SOCK_STREAM, 0) ;
+    if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
+        perror("Failed to set listening socket options.\n") ;
+    }
+
+    if(connect(fd, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0){
+        perror("Failed to connect to the server ") ;
+        exit(-1) ;
+    }
+    printf("Connection established.") ;
+    return fd ;
+}
+
+int create_tcp_ipv6_sock(char* ip, int port) {
+    int fd = socket(AF_INET6, SOCK_STREAM, 0);
+    if (fd == -1) {
+        perror("Failed to create socket");
+    }
+    struct sockaddr_in6 serverAddress_v6 ;
+    memset(&serverAddress_v6, 0, sizeof(serverAddress_v6));
+    serverAddress_v6.sin6_family = AF_INET6;
+    serverAddress_v6.sin6_port = htons(port);
+
+    if (inet_pton(AF_INET6, ip, &(serverAddress_v6.sin6_addr)) != 1) {
+        perror("Invalid IPv6 address");
+        close(fd);
+    }
+
+    if (connect(fd, (struct sockaddr *) &serverAddress_v6, sizeof(serverAddress_v6)) == -1) {
+        perror("Failed to connect");
+        close(fd);
+    }
+    return fd ;
+}
+
+
+int create_communication_fd(int strategy, char* data, int port){
+    int fd =-1 ;
+    switch (strategy) {
+        case TCP_IPV4:
+            fd = create_tcp_ipv4_sock(data, port) ;
+            break;
+        case TCP_IPV6:
+            fd = create_tcp_ipv6_sock(data, port) ;
+            break;
+        case UDP_IPV4:
+            break;
+        case UDP_IPV6:
+            break;
+        case UDS_DGRAM:
+            break;
+        case UDS_STREAM:
+            break;
+        case MMAP_FNAME:
+            break;
+        case PIPE_FNAME:
+            break;
+        default:
+            fd = 0 ;
+    }
+    return fd ;
 }
