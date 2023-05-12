@@ -5,8 +5,13 @@
 #include <arpa/inet.h>
 #include <poll.h>
 #include "NC_Utils.c"
+#include <stdio.h>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <unistd.h>
+
 #define MAX_PFD 3
-#define CHUNKSIZE 8192
 char *ip;
 int port;
 int stdin_fd = -1, chat_fd = -1, communication_fd = -1;
@@ -21,6 +26,7 @@ int is_end = 0;
 int is_acked = 1;
 int udp_port = 0;
 int offset = 0;
+int pipefd ;
 void* mapped_address = NULL ;
 void set_stdin_events()
 {
@@ -49,7 +55,7 @@ void set_chat_socket(char *ip, int port)
     chat_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (setsockopt(chat_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
     {
-        perror("Failed to set listening s100000000ocket options.\n");
+        perror("Failed to set listening socket options.\n");
     }
 
     if (connect(chat_fd, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0)
@@ -133,6 +139,11 @@ void handle_response(char *data)
         case MMAP_FNAME:
             communication_fd = create_communication_fd(combination, data, 0);
             break;
+            case PIPE_FNAME:
+                strcpy(out_msg, "pipe ready") ;
+                is_to_send = 1 ;
+                communication_fd = open(recv_buff, O_WRONLY, 0) ;
+                break;
         }
         add_to_poll(&pfds, communication_fd, 0, POLLOUT, MAX_PFD, &poll_size);
         is_end = 1;
@@ -169,16 +180,15 @@ int main(int argc, char *argv[])
             FILE* f = fopen(filename, "w");
             fclose(f);
 
-            int fd = open(filename, O_RDWR);
-            if (fd != -1) {
-                printf("File '%s' opened successfully with file descriptor %d.\n", filename, fd);
+            communication_fd = open(filename, O_RDWR);
+            if (communication_fd != -1) {
+                printf("File '%s' opened successfully with file descriptor %d.\n", filename, communication_fd);
             } else {
                 perror("Error opening file");
             }
-            write(fd, test_buff, GENERATED_DATA_LEN) ;
-            mapped_address = mmap_file_c(fd) ;
-            printf("im here bitch\n") ;
             strcpy(out_msg, "mmap ready") ;
+            is_to_send = 1 ;
+            offset += write(communication_fd, test_buff, GENERATED_DATA_LEN) ;
         }else{
         char msg[20];
         strcpy(msg, type);
@@ -227,7 +237,6 @@ int main(int argc, char *argv[])
                             recv_buff[nbytes] = '\0';
                             if (is_test)
                             {
-                                printf("Handling res\n");
                                 handle_response(recv_buff);
                             }
                             printf("%s\n", recv_buff);
@@ -251,18 +260,28 @@ int main(int argc, char *argv[])
                 {
                     if (is_to_send && current_fd == chat_fd)
                     {
-                        int bytes = send(pfds[i].fd, out_msg, strlen(out_msg), 0);
+                        send(pfds[i].fd, out_msg, strlen(out_msg), 0);
                         is_to_send = 0;
+                        if(strcmp(out_msg, "mmap ready") == 0){
+                            exit(0) ;
+                        }
                         memset(out_msg, '\0', 1024);
                     }
                     if (is_test)
                     {
                         if (current_fd == communication_fd)
                         {
-
                             if (is_acked)
                             {
-                                int bytes = send(pfds[i].fd, test_buff + offset, (offset + CHUNKSIZE <= GENERATED_DATA_LEN) ? CHUNKSIZE : GENERATED_DATA_LEN - offset, 0);
+                                int bytes = -1 ;
+                                if(combination == PIPE_FNAME){
+                                    bytes = write(communication_fd, test_buff, GENERATED_DATA_LEN) ;
+                                    close(communication_fd) ;
+                                 }else {
+                                    bytes = send(pfds[i].fd, test_buff + offset,
+                                                 (offset + CHUNKSIZE <= GENERATED_DATA_LEN) ? CHUNKSIZE :
+                                                 GENERATED_DATA_LEN - offset, 0);
+                                }
                                 if (combination == UDP_IPV4 || combination == UDP_IPV6 || combination == UDS_DGRAM)
                                 {
                                     is_acked = 0;
@@ -280,17 +299,7 @@ int main(int argc, char *argv[])
                             }
                             if (offset == GENERATED_DATA_LEN)
                             {
-                                printf("closingggg\n");
-
-                                if (remove("/tmp/server_sockk") == 0 && remove("/tmp/uds_comm") == 0)
-                                {
-                                    printf("Socket file deleted successfully.\n");
-                                }
-                                else
-                                {
-                                    printf("Unable to delete the socket file.\n");
-                                }
-                                close(communication_fd);
+                                exit_nicely_c(&pfds, poll_size) ;
                             }
                         }
                     }

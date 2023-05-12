@@ -3,11 +3,13 @@
 #include <stdlib.h>
 #include <sys/socket.h>
 #include <poll.h>
+#include <signal.h>
 #include "NC_Utils.c"
 #define MAX_PFD 6
 #define GENERATED_DATA_LEN 100000000
 int port ;
 int stdin_fd = - 1, listening_fd4 = -1, listening_fd6 = -1, listening_fd_udss = -1, chat_fd = -1, communication_fd = - 1;
+int pipefds[2] ;
 int poll_size = 0 ;
 struct pollfd *pfds ;
 char *out_msg, *recv_buff, *test_buff ;
@@ -15,6 +17,23 @@ int is_to_send = 0 ;
 int combination = 0 ;
 int bytes_received = 0 ;
 void* mapped_address = NULL ;
+
+void handle_sigint(int signum) {
+    exit_nicely_s(&pfds, poll_size) ;
+    exit(0) ;
+}
+
+void reset(){
+    bytes_received = 0 ;
+    combination = 0 ;
+    is_to_send = 0 ;
+    mapped_address = NULL ;
+    out_msg = malloc(1024) ;
+    recv_buff = malloc(1024) ;
+    test_buff = calloc(GENERATED_DATA_LEN, 1) ;
+    close(communication_fd) ;
+}
+
 void set_stdin_events(){
     stdin_fd = fileno(stdin);
     add_to_poll(&pfds, stdin_fd, POLLIN, 0, MAX_PFD, &poll_size);
@@ -83,7 +102,16 @@ void check_for_requests(){
             }else if(combination == MMAP_FNAME){
                 mapped_address = mmap_file_s() ;
                 memcpy(test_buff, mapped_address, GENERATED_DATA_LEN) ;
-                printf("after test: %ld\n", strlen(test_buff));
+                munmap(mapped_address, GENERATED_DATA_LEN) ;
+            }else if(combination == PIPE_FNAME){
+                if(mkfifo(FIFO_PATH, 0666) == -1){
+                    perror("FIFO: \n") ;
+                }
+
+                strcpy(out_msg, FIFO_PATH) ;
+                communication_fd = open(FIFO_PATH, O_RDONLY | O_NDELAY) ;
+                add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
+                is_to_send = 1 ;
             }
         }
 
@@ -92,18 +120,15 @@ void check_for_requests(){
 
 
 int main(int argc, char* argv[]){
+    signal(SIGINT, handle_sigint);
     port = atoi(argv[1]) ;
-    out_msg = malloc(1024) ;
-    recv_buff = malloc(1024) ;
-    test_buff = calloc(GENERATED_DATA_LEN, 1) ;
-    printf("test: %s", test_buff) ;
     pfds = malloc(sizeof *pfds * MAX_PFD);
+    reset() ;
     set_stdin_events() ;
     set_listening_sockets(port) ;
     while(1){
         int poll_count = poll(pfds, poll_size, -1) ;
         if(poll_count < 0){
-
             perror("Poll error: ");
             exit(-1);
         } else {
@@ -113,7 +138,6 @@ int main(int argc, char* argv[]){
                     if(current_fd == listening_fd4 || current_fd == listening_fd6){
                         int newfd = accept_socket(current_fd) ;
                         printf("New connection established.. \n") ;
-                        printf("Size: %d\n", poll_size) ;
                         if(poll_size == 4){
                             chat_fd = newfd ;
                             add_to_poll(&pfds, chat_fd, POLLIN, POLLOUT, MAX_PFD, &poll_size) ;
@@ -139,15 +163,23 @@ int main(int argc, char* argv[]){
                                 perror("Failed receiving from client");
                             }
                             close(pfds[i].fd); // Bye!
-                            remove_from_poll(&pfds, &poll_size, i);
+                            combination = 0 ;
+                            remove_from_poll(&pfds, &poll_size, chat_fd);
+                            remove_from_poll(&pfds, &poll_size, communication_fd);
                         } else {
                             recv_buff[nbytes] = '\0';
+                            printf("%s\n", recv_buff) ;
                             check_for_requests() ;
-                            printf("%s\n", recv_buff);
                         }
                     }else if(current_fd == communication_fd) {
-                        int nbytes = recv(pfds[i].fd, test_buff, GENERATED_DATA_LEN, 0);
-                        bytes_received += nbytes ;
+                        int nbytes = -1 ;
+                        if(combination == PIPE_FNAME){
+                            nbytes = read(communication_fd, test_buff, GENERATED_DATA_LEN) ;
+                            printf("nbytes readed rom pipe %d\n", nbytes) ;
+                        }else {
+                            nbytes = recv(pfds[i].fd, test_buff, GENERATED_DATA_LEN, 0);
+                        }
+                        bytes_received += nbytes;
                         printf("bytes received: %d Total bytes: %d\n",nbytes, bytes_received) ;
                         int sender_fd = pfds[i].fd;
                         if (nbytes <= 0) {
@@ -157,13 +189,17 @@ int main(int argc, char* argv[]){
                                 perror("Failed receiving from client");
                             }
                             close(pfds[i].fd); // Bye!
-                            remove_from_poll(&pfds, &poll_size, i);
+                            remove_from_poll(&pfds, &poll_size, communication_fd);
                         } else {
                             test_buff[nbytes] = '\0';
                             if(combination == UDP_IPV4 || combination == UDP_IPV6 || combination == UDS_DGRAM){
                             strcpy(out_msg, "ACK") ;
                             is_to_send = 1 ;
                             }
+                        }
+                        if(bytes_received == GENERATED_DATA_LEN){
+                            printf("Received all of the data, reset.\n") ;
+                            reset() ;
                         }
                     }else if(current_fd == stdin_fd){
                         int ret = read(pfds[i].fd, out_msg, 1023);
@@ -177,12 +213,10 @@ int main(int argc, char* argv[]){
                 }else if(pfds[i].revents & POLLOUT){
                     if(is_to_send && current_fd == chat_fd){
                         int bytes = send(pfds[i].fd, out_msg, strlen(out_msg), 0) ;
-                        printf("Bytes sent: %d\n", bytes) ;
                         is_to_send = 0 ;
                         memset(out_msg, '\0', 1024) ;
                     }
                 }
-//                            printf("%s\n", test_buff);
             }
         }
     }

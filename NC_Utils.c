@@ -11,12 +11,14 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 
+#define CHUNKSIZE 8192
 #define GENERATED_DATA_LEN 100000000
 #define IP_ADDR "127.0.0.1"
 #define IPV6_ADDR "::1"
-#define UDS_LISTENING_PATH "/tmp/server_sockk"
-#define UDS_COMM_PATH "/tmp/uds_comm"
+#define UDS_LISTENING_PATH "server_sock"
+#define UDS_COMM_PATH "uds_comm"
 #define MMAP_PATH "mmap_p"
+#define FIFO_PATH "my_fifo"
 #define TCP_IPV4 1
 #define TCP_IPV6 2
 #define UDP_IPV4 3
@@ -26,6 +28,28 @@
 #define MMAP_FNAME 7
 #define PIPE_FNAME 8
 int yes = 1;
+
+void exit_nicely_s(struct pollfd *pfds[], int poll_size){
+    remove(UDS_LISTENING_PATH) ;
+    remove(UDS_COMM_PATH) ;
+    remove(MMAP_PATH) ;
+    remove(FIFO_PATH) ;
+
+    for(int i = 0 ; i < poll_size ; i++) {
+        close((*pfds)[i].fd) ;
+    }
+    printf("Exiting nicely :)\n") ;
+    exit(0) ;
+}
+
+void exit_nicely_c(struct pollfd *pfds[], int poll_size) {
+    remove(UDS_COMM_PATH) ;
+    remove(FIFO_PATH) ;
+    for(int i = 0 ; i < poll_size ; i++) {
+        close((*pfds)[i].fd) ;
+    }
+    exit(0) ;
+}
 
 void *get_in_addr(struct sockaddr *sa)
 {
@@ -65,15 +89,19 @@ void add_to_poll(struct pollfd *pfds[], int fd, int poll_in, int poll_out, int m
     }
 }
 
-void remove_from_poll(struct pollfd *pfds[], int *poll_size, int index)
-{
-    (*pfds)[index] = (*pfds)[*poll_size - 1];
-    *poll_size--;
+void remove_from_poll(struct pollfd *pfds[], int *poll_size, int fd){
+    for(int i = 0 ; i < *poll_size ; i++){
+        if((*pfds)[i].fd == fd){
+            (*pfds)[i] = (*pfds)[*poll_size - 1];
+            (*poll_size)--;
+            printf("Deleted fd number: %d from the poll.\n", fd) ;
+            return ;
+        }
+    }
 }
 
 int create_listening_socket_ipv4(int port)
 {
-    int yes = 1; // For setsockopt() SO_REUSEADDR, below
     struct sockaddr_in serverAddress;
     memset(serverAddress.sin_zero, 0, sizeof(serverAddress.sin_zero));
     serverAddress.sin_port = htons(port);
@@ -100,7 +128,6 @@ int create_listening_socket_ipv4(int port)
 }
 int create_listening_socket_ipv6(int port)
 {
-    int yes = 1; // For setsockopt() SO_REUSEADDR, below
     struct sockaddr_in6 serverAddress;
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin6_port = htons(port);
@@ -122,7 +149,6 @@ int create_listening_socket_ipv6(int port)
     {
         perror("Failed to listen");
     }
-    printf("listening for ipv6....\n");
     return sock_fd;
 }
 
@@ -131,7 +157,6 @@ int create_listening_socket_udss()
     int fd;
     struct sockaddr_un serverAddr;
 
-    // Create a UDS socket
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0)
     {
@@ -139,19 +164,15 @@ int create_listening_socket_udss()
         exit(EXIT_FAILURE);
     }
 
-    // Configure server address settings
     serverAddr.sun_family = AF_UNIX;
     strcpy(serverAddr.sun_path, UDS_LISTENING_PATH);
 
-    printf("listening for shit....\n");
-    // Bind the socket to the server address
     if (bind(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
     {
         perror("Error in bind");
         exit(EXIT_FAILURE);
     }
 
-    // Listen for incoming connections
     if (listen(fd, 1) < 0)
     {
         perror("Error in listen");
@@ -334,7 +355,6 @@ char *get_sock_port(int fd)
     getsockname(fd, (struct sockaddr *)&allocatedAddr, &addrLen);
     char *port_str = malloc(6);
     sprintf(port_str, "%d", ntohs(allocatedAddr.sin_port));
-    printf("Port: %s\n", port_str);
     return port_str;
 }
 
@@ -380,7 +400,6 @@ int create_udss_socket(char *path)
     int fd;
     struct sockaddr_un serverAddr;
 
-    // Create a UDS socket
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0)
     {
@@ -405,8 +424,7 @@ void* mmap_file_c(int fd){
 
     void* addr = mmap(NULL, GENERATED_DATA_LEN, PROT_WRITE, MAP_SHARED, fd, 0);
     if (addr != MAP_FAILED) {
-        printf("Memory mapping successful.\n");
-//            munmap(addr, 1000);
+        perror("Mmap failed: ") ;
     } else {
         perror("mmap");
         close(fd); // Close the file descriptor before exiting
@@ -415,7 +433,6 @@ void* mmap_file_c(int fd){
 
         close(fd); // Close the file descriptor after memory mapping
 
-    printf("done with that shit!\n") ;
     return addr;
 }
 
@@ -456,9 +473,6 @@ int create_communication_fd(int strategy, char *data, int port)
             break;
         case UDS_STREAM:
             fd = create_udss_socket(data);
-            break;
-        case MMAP_FNAME:
-
             break;
         case PIPE_FNAME:
             break;
