@@ -28,6 +28,7 @@ int udp_port = 0;
 int offset = 0;
 int pipefd ;
 void* mapped_address = NULL ;
+clock_t start = 0;
 void set_stdin_events()
 {
     stdin_fd = fileno(stdin);
@@ -113,32 +114,31 @@ void set_combination()
 
 void handle_response(char *data)
 {
-    printf("Combination %d\n", combination);
     if (!is_end)
     {
         switch (combination)
         {
-        case TCP_IPV4:
-            communication_fd = create_communication_fd(combination, data, port);
-            break;
-        case TCP_IPV6:
-            communication_fd = create_communication_fd(combination, data, port);
-            break;
-        case UDP_IPV4:
-            communication_fd = create_communication_fd(combination, data, 0);
-            break;
-        case UDP_IPV6:
-            communication_fd = create_communication_fd(combination, data, 0);
-            break;
-        case UDS_DGRAM:
-            communication_fd = create_communication_fd(combination, data, 0);
-            break;
-        case UDS_STREAM:
-            communication_fd = create_communication_fd(combination, data, 0);
-            break;
-        case MMAP_FNAME:
-            communication_fd = create_communication_fd(combination, data, 0);
-            break;
+            case TCP_IPV4:
+                communication_fd = create_communication_fd(combination, data, port);
+                break;
+            case TCP_IPV6:
+                communication_fd = create_communication_fd(combination, data, port);
+                break;
+            case UDP_IPV4:
+                communication_fd = create_communication_fd(combination, data, 0);
+                break;
+            case UDP_IPV6:
+                communication_fd = create_communication_fd(combination, data, 0);
+                break;
+            case UDS_DGRAM:
+                communication_fd = create_communication_fd(combination, data, 0);
+                break;
+            case UDS_STREAM:
+                communication_fd = create_communication_fd(combination, data, 0);
+                break;
+            case MMAP_FNAME:
+                communication_fd = create_communication_fd(combination, data, 0);
+                break;
             case PIPE_FNAME:
                 strcpy(out_msg, "pipe ready") ;
                 is_to_send = 1 ;
@@ -190,14 +190,14 @@ int main(int argc, char *argv[])
             is_to_send = 1 ;
             offset += write(communication_fd, test_buff, GENERATED_DATA_LEN) ;
         }else{
-        char msg[20];
-        strcpy(msg, type);
-        strcat(msg, " ");
-        strcat(msg, param);
-        strcpy(out_msg, msg);
+            char msg[20];
+            strcpy(msg, type);
+            strcat(msg, " ");
+            strcat(msg, param);
+            strcpy(out_msg, msg);
         }
         is_to_send = 1;
-        
+
     }
 
     while (1)
@@ -269,6 +269,11 @@ int main(int argc, char *argv[])
                     }
                     if (is_test)
                     {
+                        if(start == 0) {
+                            start = clock();
+                            strcpy(out_msg, "clock") ;
+                            is_to_send = 1 ;
+                        }
                         if (current_fd == communication_fd)
                         {
                             if (is_acked)
@@ -277,7 +282,7 @@ int main(int argc, char *argv[])
                                 if(combination == PIPE_FNAME){
                                     bytes = write(communication_fd, test_buff, GENERATED_DATA_LEN) ;
                                     close(communication_fd) ;
-                                 }else {
+                                }else {
                                     bytes = send(pfds[i].fd, test_buff + offset,
                                                  (offset + CHUNKSIZE <= GENERATED_DATA_LEN) ? CHUNKSIZE :
                                                  GENERATED_DATA_LEN - offset, 0);
@@ -295,7 +300,7 @@ int main(int argc, char *argv[])
                                 {
                                     offset += bytes;
                                 }
-                                printf("sent %d bytes, Total of: %d!\n", bytes, offset);
+//                                printf("sent %d bytes, Total of: %d!\n", bytes, offset);
                             }
                             if (offset == GENERATED_DATA_LEN)
                             {

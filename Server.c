@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <poll.h>
 #include <signal.h>
+#include <sys/stat.h>
 #include "NC_Utils.c"
 #define MAX_PFD 6
 #define GENERATED_DATA_LEN 100000000
@@ -17,6 +18,15 @@ int is_to_send = 0 ;
 int combination = 0 ;
 int bytes_received = 0 ;
 void* mapped_address = NULL ;
+clock_t start, end ;
+double total_time = -1 ;
+double transfer_rate = 0 ;
+
+void calculate_times_and_print(){
+    total_time = ((double)(end - start)) / CLOCKS_PER_SEC;
+    transfer_rate = 100.0 / total_time ;
+    printf("Time measured: %.2f Seconds ----- Transfer rate: %.2f Mbps", total_time, transfer_rate) ;
+}
 
 void handle_sigint(int signum) {
     exit_nicely_s(&pfds, poll_size) ;
@@ -32,6 +42,7 @@ void reset(){
     recv_buff = malloc(1024) ;
     test_buff = calloc(GENERATED_DATA_LEN, 1) ;
     close(communication_fd) ;
+    end = 0 ;
 }
 
 void set_stdin_events(){
@@ -100,9 +111,12 @@ void check_for_requests(){
                 is_to_send = 1 ;
                 add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
             }else if(combination == MMAP_FNAME){
+                start = clock() ;
                 mapped_address = mmap_file_s() ;
                 memcpy(test_buff, mapped_address, GENERATED_DATA_LEN) ;
                 munmap(mapped_address, GENERATED_DATA_LEN) ;
+                end = clock() ;
+                calculate_times_and_print() ;
             }else if(combination == PIPE_FNAME){
                 if(mkfifo(FIFO_PATH, 0666) == -1){
                     perror("FIFO: \n") ;
@@ -153,7 +167,6 @@ int main(int argc, char* argv[]){
                             printf("%d added to poll, events: %d\n", communication_fd, pfds[poll_size-1].events);
                     }
                     if(current_fd == chat_fd){
-
                         int nbytes = recv(pfds[i].fd, recv_buff, 1023, 0);
                         int sender_fd = pfds[i].fd;
                         if (nbytes <= 0) {
@@ -169,18 +182,20 @@ int main(int argc, char* argv[]){
                         } else {
                             recv_buff[nbytes] = '\0';
                             printf("%s\n", recv_buff) ;
-                            check_for_requests() ;
+                            if(is_clock_msg(recv_buff)){
+                                start = clock() ;
+                            }else {
+                                check_for_requests();
+                            }
                         }
                     }else if(current_fd == communication_fd) {
                         int nbytes = -1 ;
                         if(combination == PIPE_FNAME){
                             nbytes = read(communication_fd, test_buff, GENERATED_DATA_LEN) ;
-                            printf("nbytes readed rom pipe %d\n", nbytes) ;
                         }else {
                             nbytes = recv(pfds[i].fd, test_buff, GENERATED_DATA_LEN, 0);
                         }
                         bytes_received += nbytes;
-                        printf("bytes received: %d Total bytes: %d\n",nbytes, bytes_received) ;
                         int sender_fd = pfds[i].fd;
                         if (nbytes <= 0) {
                             if (nbytes == 0) {
@@ -198,7 +213,8 @@ int main(int argc, char* argv[]){
                             }
                         }
                         if(bytes_received == GENERATED_DATA_LEN){
-                            printf("Received all of the data, reset.\n") ;
+                            end = clock() ;
+                            calculate_times_and_print() ;
                             reset() ;
                         }
                     }else if(current_fd == stdin_fd){

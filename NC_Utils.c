@@ -9,7 +9,7 @@
 #include <sys/un.h>
 #include <sys/mman.h>
 #include <fcntl.h>
-#include <sys/stat.h>
+#include <time.h>
 
 #define CHUNKSIZE 8192
 #define GENERATED_DATA_LEN 100000000
@@ -29,6 +29,16 @@
 #define PIPE_FNAME 8
 int yes = 1;
 
+int is_clock_msg(const char* str){
+    const char* prefix = "clock";
+    size_t prefixLength = strlen(prefix);
+
+    if (strncmp(str, prefix, prefixLength) == 0) {
+        return 1 ;
+    }
+    return 0 ;
+}
+
 void exit_nicely_s(struct pollfd *pfds[], int poll_size){
     remove(UDS_LISTENING_PATH) ;
     remove(UDS_COMM_PATH) ;
@@ -43,6 +53,7 @@ void exit_nicely_s(struct pollfd *pfds[], int poll_size){
 }
 
 void exit_nicely_c(struct pollfd *pfds[], int poll_size) {
+    sleep(1) ;
     remove(UDS_COMM_PATH) ;
     remove(FIFO_PATH) ;
     for(int i = 0 ; i < poll_size ; i++) {
