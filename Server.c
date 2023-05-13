@@ -22,11 +22,14 @@ clock_t start, end ;
 double total_time = -1 ;
 double transfer_rate = 0 ;
 int is_quite = 0, is_test = 0 ;
-
+char* transmission_type ;
 void calculate_times_and_print(){
     total_time = ((double)(end - start)) / CLOCKS_PER_SEC;
-    transfer_rate = 100.0 / total_time ;
-    printf("Time measured: %.2f Seconds ----- Transfer rate: %.2f Mbps\n", total_time, transfer_rate) ;
+    transfer_rate = 100.0 / total_time;
+
+    // Convert the total_time to milliseconds as an integer
+    int total_time_ms = (int)(total_time * 1000.0);
+    printf("%s, %d\n", transmission_type, total_time_ms) ;
 }
 
 void handle_sigint(int signum) {
@@ -62,20 +65,28 @@ void set_listening_sockets(int port){
 
 int set_combination(){
     if(strcmp(recv_buff, "ipv4 tcp") == 0) {
+        transmission_type = "ipv4_tcp" ;
         combination = TCP_IPV4;
     }else if(strcmp(recv_buff, "ipv6 tcp") == 0){
+        transmission_type = "ipv6_tcp" ;
         combination = TCP_IPV6 ;
     }else if(strcmp(recv_buff, "ipv4 udp") == 0){
+        transmission_type = "ipv4_udp" ;
         combination = UDP_IPV4 ;
     }else if(strcmp(recv_buff, "ipv6 udp") == 0){
+        transmission_type = "ipv6_udp" ;
         combination = UDP_IPV6 ;
     }else if(strcmp(recv_buff, "uds dgram") == 0){
+        transmission_type = "uds_dgram" ;
         combination = UDS_DGRAM ;
     }else if(strcmp(recv_buff, "uds stream") == 0){
+        transmission_type = "uds_stream" ;
         combination = UDS_STREAM ;
     }else if(strcmp(recv_buff, "mmap ready") == 0){
+        transmission_type = "mmap" ;
         combination = MMAP_FNAME ;
     }else if(strcmp(recv_buff, "pipe filename") == 0){
+        transmission_type = "pipe" ;
         combination = PIPE_FNAME ;
     }
     return combination ;
