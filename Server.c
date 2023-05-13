@@ -21,11 +21,12 @@ void* mapped_address = NULL ;
 clock_t start, end ;
 double total_time = -1 ;
 double transfer_rate = 0 ;
+int is_quite = 0, is_test = 0 ;
 
 void calculate_times_and_print(){
     total_time = ((double)(end - start)) / CLOCKS_PER_SEC;
     transfer_rate = 100.0 / total_time ;
-    printf("Time measured: %.2f Seconds ----- Transfer rate: %.2f Mbps", total_time, transfer_rate) ;
+    printf("Time measured: %.2f Seconds ----- Transfer rate: %.2f Mbps\n", total_time, transfer_rate) ;
 }
 
 void handle_sigint(int signum) {
@@ -60,13 +61,13 @@ void set_listening_sockets(int port){
 }
 
 int set_combination(){
-    if(strcmp(recv_buff, "tcp ipv4") == 0) {
+    if(strcmp(recv_buff, "ipv4 tcp") == 0) {
         combination = TCP_IPV4;
-    }else if(strcmp(recv_buff, "tcp ipv6") == 0){
+    }else if(strcmp(recv_buff, "ipv6 tcp") == 0){
         combination = TCP_IPV6 ;
-    }else if(strcmp(recv_buff, "udp ipv4") == 0){
+    }else if(strcmp(recv_buff, "ipv4 udp") == 0){
         combination = UDP_IPV4 ;
-    }else if(strcmp(recv_buff, "udp ipv6") == 0){
+    }else if(strcmp(recv_buff, "ipv6 udp") == 0){
         combination = UDP_IPV6 ;
     }else if(strcmp(recv_buff, "uds dgram") == 0){
         combination = UDS_DGRAM ;
@@ -136,6 +137,18 @@ void check_for_requests(){
 int main(int argc, char* argv[]){
     signal(SIGINT, handle_sigint);
     port = atoi(argv[1]) ;
+    if(argc == 3){
+        if(strcmp(argv[2], "-p") == 0){
+            is_test = 1 ;
+        }
+    }else if(argc == 4){
+        if(strcmp(argv[2], "-p") == 0){
+            is_test = 1 ;
+        }
+        if(strcmp(argv[3], "-q") == 0){
+            is_quite = 1 ;
+        }
+    }
     pfds = malloc(sizeof *pfds * MAX_PFD);
     reset() ;
     set_stdin_events() ;
@@ -143,7 +156,9 @@ int main(int argc, char* argv[]){
     while(1){
         int poll_count = poll(pfds, poll_size, -1) ;
         if(poll_count < 0){
-            perror("Poll error: ");
+            if(!is_quite) {
+                perror("Poll error: ");
+            }
             exit(-1);
         } else {
             for (int i = 0; i < poll_size; i++) {
@@ -151,29 +166,31 @@ int main(int argc, char* argv[]){
                 if(pfds[i].revents & POLLIN){
                     if(current_fd == listening_fd4 || current_fd == listening_fd6){
                         int newfd = accept_socket(current_fd) ;
-                        printf("New connection established.. \n") ;
+                        if(!is_quite) {
+                            printf("New connection established.. \n");
+                        }
                         if(poll_size == 4){
                             chat_fd = newfd ;
                             add_to_poll(&pfds, chat_fd, POLLIN, POLLOUT, MAX_PFD, &poll_size) ;
                         }else {
                             communication_fd = newfd ;
                             add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
-                            printf("%d added to poll, events: %d\n", newfd, pfds[poll_size-1].events);
                         }
                     }
                     if(current_fd == listening_fd_udss){
                         communication_fd = accept_udss_socket(listening_fd_udss) ;
                             add_to_poll(&pfds, communication_fd, POLLIN, 0, MAX_PFD, &poll_size) ;
-                            printf("%d added to poll, events: %d\n", communication_fd, pfds[poll_size-1].events);
                     }
                     if(current_fd == chat_fd){
                         int nbytes = recv(pfds[i].fd, recv_buff, 1023, 0);
                         int sender_fd = pfds[i].fd;
                         if (nbytes <= 0) {
-                            if (nbytes == 0) {
-                                printf("pollserver: socket %d hung up\n", sender_fd);
-                            } else {
-                                perror("Failed receiving from client");
+                            if(!is_quite) {
+                                if (nbytes == 0) {
+                                    printf("pollserver: socket %d hung up\n", sender_fd);
+                                } else {
+                                    perror("Failed receiving from client");
+                                }
                             }
                             close(pfds[i].fd); // Bye!
                             combination = 0 ;
@@ -181,7 +198,9 @@ int main(int argc, char* argv[]){
                             remove_from_poll(&pfds, &poll_size, communication_fd);
                         } else {
                             recv_buff[nbytes] = '\0';
-                            printf("%s\n", recv_buff) ;
+                            if(!is_quite) {
+                                printf("%s\n", recv_buff);
+                            }
                             if(is_clock_msg(recv_buff)){
                                 start = clock() ;
                             }else {
@@ -198,11 +217,6 @@ int main(int argc, char* argv[]){
                         bytes_received += nbytes;
                         int sender_fd = pfds[i].fd;
                         if (nbytes <= 0) {
-                            if (nbytes == 0) {
-                                printf("pollserver: shitty socket %d hung up\n", sender_fd);
-                            } else {
-                                perror("Failed receiving from client");
-                            }
                             close(pfds[i].fd); // Bye!
                             remove_from_poll(&pfds, &poll_size, communication_fd);
                         } else {
@@ -223,7 +237,9 @@ int main(int argc, char* argv[]){
                             out_msg[ret-1] = '\0';
                             is_to_send = 1 ;
                         } else if (ret < 0) {
-                            perror("Error reading from the input: ") ;
+                            if(!is_quite) {
+                                perror("Error reading from the input: ");
+                            }
                         }
                     }
                 }else if(pfds[i].revents & POLLOUT){

@@ -48,7 +48,6 @@ void exit_nicely_s(struct pollfd *pfds[], int poll_size){
     for(int i = 0 ; i < poll_size ; i++) {
         close((*pfds)[i].fd) ;
     }
-    printf("Exiting nicely :)\n") ;
     exit(0) ;
 }
 
@@ -74,11 +73,7 @@ void *get_in_addr(struct sockaddr *sa)
 
 void add_to_poll(struct pollfd *pfds[], int fd, int poll_in, int poll_out, int max_pfd, int *poll_size)
 {
-    if (*poll_size == max_pfd)
-    {
-        printf("Failed adding fd to the poll, poll is full.\n");
-    }
-    else
+    if (*poll_size < max_pfd)
     {
         (*pfds)[*poll_size].fd = fd;
         if (poll_in == POLLIN)
@@ -105,7 +100,6 @@ void remove_from_poll(struct pollfd *pfds[], int *poll_size, int fd){
         if((*pfds)[i].fd == fd){
             (*pfds)[i] = (*pfds)[*poll_size - 1];
             (*poll_size)--;
-            printf("Deleted fd number: %d from the poll.\n", fd) ;
             return ;
         }
     }
@@ -121,20 +115,17 @@ int create_listening_socket_ipv4(int port)
     int sock_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
     {
-        perror("Failed to set listening socket options.\n");
         return -1;
     }
 
     if (bind(sock_fd, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0)
     {
-        perror("Failed to bind the listening socket.");
         return -1;
     }
     if (listen(sock_fd, 1) == -1)
     {
-        perror("Failed to listen ");
+        return -1 ;
     }
-    printf("Listening for connections... shity\n");
     return sock_fd;
 }
 int create_listening_socket_ipv6(int port)
@@ -147,18 +138,16 @@ int create_listening_socket_ipv6(int port)
     int sock_fd = socket(AF_INET6, SOCK_STREAM, 0);
     if (setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
     {
-        perror("Failed to set listening socket options.\n");
         return -1;
     }
 
     if (bind(sock_fd, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0)
     {
-        perror("Failed to bind the listening socket.");
         return -1;
     }
     if (listen(sock_fd, 1) == -1)
     {
-        perror("Failed to listen");
+        return -1 ;
     }
     return sock_fd;
 }
@@ -171,7 +160,6 @@ int create_listening_socket_udss()
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0)
     {
-        perror("Error in socket");
         exit(EXIT_FAILURE);
     }
 
@@ -180,13 +168,11 @@ int create_listening_socket_udss()
 
     if (bind(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
     {
-        perror("Error in bind");
         exit(EXIT_FAILURE);
     }
 
     if (listen(fd, 1) < 0)
     {
-        perror("Error in listen");
         exit(EXIT_FAILURE);
     }
     return fd;
@@ -206,16 +192,7 @@ int accept_socket(int listening_fd)
 
     if (newfd == -1)
     {
-        perror("Failed accepting new connection.");
-    }
-    else
-    {
-        printf("pollserver: new connection from %s on "
-               "socket %d\n",
-               inet_ntop(remoteaddr.ss_family,
-                         get_in_addr((struct sockaddr *)&remoteaddr),
-                         remoteIP, INET6_ADDRSTRLEN),
-               newfd);
+        return -1 ;
     }
     return newfd;
 }
@@ -226,7 +203,6 @@ int accept_udss_socket(int listening_fd)
     int client_fd = accept(listening_fd, NULL, NULL);
     if (client_fd < 0)
     {
-        perror("Error in accept");
         exit(EXIT_FAILURE);
     }
     return client_fd;
@@ -243,15 +219,13 @@ int create_tcp_ipv4_sock(char *ip, int port)
     fd = socket(AF_INET, SOCK_STREAM, 0);
     if (setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1)
     {
-        perror("Failed to set listening socket options.\n");
+        exit(-1) ;
     }
 
     if (connect(fd, (struct sockaddr *)&serverAddress, sizeof(serverAddress)) < 0)
     {
-        perror("Failed to connect to the server ");
         exit(-1);
     }
-    printf("Connection established.");
     return fd;
 }
 
@@ -260,7 +234,7 @@ int create_tcp_ipv6_sock(char *ip, int port)
     int fd = socket(AF_INET6, SOCK_STREAM, 0);
     if (fd == -1)
     {
-        perror("Failed to create socket");
+        exit(-1) ;
     }
     struct sockaddr_in6 serverAddress_v6;
     memset(&serverAddress_v6, 0, sizeof(serverAddress_v6));
@@ -269,13 +243,11 @@ int create_tcp_ipv6_sock(char *ip, int port)
 
     if (inet_pton(AF_INET6, ip, &(serverAddress_v6.sin6_addr)) != 1)
     {
-        perror("Invalid IPv6 address");
         close(fd);
     }
 
     if (connect(fd, (struct sockaddr *)&serverAddress_v6, sizeof(serverAddress_v6)) == -1)
     {
-        perror("Failed to connect");
         close(fd);
     }
     return fd;
@@ -286,7 +258,7 @@ int create_udp_ipv4_socket(char *data)
     int fd = socket(AF_INET, SOCK_DGRAM, 0);
     if (fd == -1)
     {
-        perror("Failed to create socket");
+        exit(-1) ;
     }
     struct sockaddr_in my_addr;
     memset(&my_addr, 0, sizeof(my_addr));
@@ -296,7 +268,6 @@ int create_udp_ipv4_socket(char *data)
 
     if (bind(fd, (struct sockaddr *)&my_addr, sizeof(my_addr)) < 0)
     {
-        perror("Error in bind");
         exit(EXIT_FAILURE);
     }
     if (data != NULL)
@@ -309,7 +280,6 @@ int create_udp_ipv4_socket(char *data)
         // Connect to the server
         if (connect(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
         {
-            perror("Error in connect");
             exit(EXIT_FAILURE);
         }
     }
@@ -321,7 +291,7 @@ int create_udp_ipv6_socket(char *data)
     int fd = socket(AF_INET6, SOCK_DGRAM, 0);
     if (fd == -1)
     {
-        perror("Failed to create socket");
+        exit(-1) ;
     }
     struct sockaddr_in6 my_adder;
     memset(&my_adder, 0, sizeof(my_adder));
@@ -329,13 +299,11 @@ int create_udp_ipv6_socket(char *data)
     my_adder.sin6_port = htons(0); // Specify 0 to let the OS assign a free port
     if (inet_pton(AF_INET6, IPV6_ADDR, &(my_adder.sin6_addr)) != 1)
     {
-        perror("Invalid IPv6 address");
         close(fd);
     }
 
     if (bind(fd, (struct sockaddr *)&my_adder, sizeof(my_adder)) < 0)
     {
-        perror("Error in bind");
         exit(EXIT_FAILURE);
     }
     if (data != NULL)
@@ -345,13 +313,11 @@ int create_udp_ipv6_socket(char *data)
         serverAddr.sin6_port = htons(atoi(data));
         if (inet_pton(AF_INET6, IPV6_ADDR, &(serverAddr.sin6_addr)) != 1)
         {
-            perror("Invalid IPv6 address");
             close(fd);
         }
         // Connect to the server
         if (connect(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
         {
-            perror("Error in connect");
             exit(EXIT_FAILURE);
         }
     }
@@ -378,7 +344,6 @@ int create_udsd_socket(char *path)
     fd = socket(AF_UNIX, SOCK_DGRAM, 0);
     if (fd < 0)
     {
-        perror("Error in socket");
         exit(EXIT_FAILURE);
     }
     if (path == NULL)
@@ -390,7 +355,6 @@ int create_udsd_socket(char *path)
         // Bind the socket to the server address
         if (bind(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
         {
-            perror("Error in bind");
             exit(EXIT_FAILURE);
         }
     }else{
@@ -399,7 +363,6 @@ int create_udsd_socket(char *path)
         // Connect to the server
         if (connect(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
         {
-            perror("Error in connect");
             exit(EXIT_FAILURE);
         }
     }
@@ -414,7 +377,6 @@ int create_udss_socket(char *path)
     fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (fd < 0)
     {
-        perror("Error in socket");
         exit(EXIT_FAILURE);
     }
 
@@ -425,38 +387,19 @@ int create_udss_socket(char *path)
     // Connect to the server
     if (connect(fd, (struct sockaddr *)&serverAddr, sizeof(serverAddr)) < 0)
     {
-        perror("Error in connect");
         exit(EXIT_FAILURE);
     }
     return fd;
 }
 
-void* mmap_file_c(int fd){
-
-    void* addr = mmap(NULL, GENERATED_DATA_LEN, PROT_WRITE, MAP_SHARED, fd, 0);
-    if (addr != MAP_FAILED) {
-        perror("Mmap failed: ") ;
-    } else {
-        perror("mmap");
-        close(fd); // Close the file descriptor before exiting
-        return NULL ;
-    }
-
-        close(fd); // Close the file descriptor after memory mapping
-
-    return addr;
-}
-
 void* mmap_file_s(){
     int fd = open(MMAP_PATH, O_RDONLY | O_CREAT);
     if (fd == -1) {
-        perror("open");
         exit(EXIT_FAILURE);
     }
 
     void* mappedAddr = mmap(NULL, GENERATED_DATA_LEN, PROT_READ, MAP_SHARED, fd, 0);
     if (mappedAddr == MAP_FAILED) {
-        perror("mmap");
         exit(EXIT_FAILURE);
     }
     return mappedAddr ;
@@ -491,4 +434,14 @@ int create_communication_fd(int strategy, char *data, int port)
             fd = 0;
     }
     return fd;
+}
+
+unsigned int calculate_checksum(const unsigned char* buffer, size_t bufferSize) {
+    unsigned int checksum = 0;
+
+    for (size_t i = 0; i < bufferSize; ++i) {
+        checksum += buffer[i];
+    }
+
+    return checksum;
 }

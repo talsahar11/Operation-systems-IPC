@@ -22,10 +22,18 @@ char** create_sub_args(char* argv[], int argc, int cl_or_serv){
             new_args[5] = NULL ;
         }
     }else{
-        new_args = malloc(sizeof(void *) * 3);
+        new_args = malloc(sizeof(void *) * (argc));
         new_args[0] = "./server" ;
         new_args[1] = argv[2] ;
         new_args[2] = NULL ;
+        if(argc >= 4){
+            new_args[2] = argv[3] ;
+            new_args[3] = NULL ;
+        }
+        if(argc == 5){
+            new_args[3] = argv[4] ;
+            new_args[4] = NULL ;
+        }
     }
     return new_args ;
 }
@@ -65,7 +73,7 @@ int main(int argc, char *argv[]) {
             execvp(new_args[0], new_args) ;
         }
     }else if(strcmp(argv[1], "-s") == 0){
-        if(argc != 3){
+        if(argc < 3 || argc > 5){
             print_man() ;
         }else{
             if(atoi(argv[2]) <= 0) {

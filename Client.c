@@ -29,6 +29,7 @@ int offset = 0;
 int pipefd ;
 void* mapped_address = NULL ;
 clock_t start = 0;
+unsigned int checksum = 0 ;
 void set_stdin_events()
 {
     stdin_fd = fileno(stdin);
@@ -69,22 +70,22 @@ void set_chat_socket(char *ip, int port)
 }
 void set_combination()
 {
-    if (strcmp(type, "tcp") == 0)
+    if (strcmp(type, "ipv4") == 0)
     {
-        if (strcmp(param, "ipv4") == 0)
+        if (strcmp(param, "tcp") == 0)
         {
             combination = TCP_IPV4;
         }
         else
         {
-            combination = TCP_IPV6;
+            combination = UDP_IPV4;
         }
     }
-    else if (strcmp(type, "udp") == 0)
+    else if (strcmp(type, "ipv6") == 0)
     {
-        if (strcmp(param, "ipv4") == 0)
+        if (strcmp(param, "tcp") == 0)
         {
-            combination = UDP_IPV4;
+            combination = TCP_IPV6;
         }
         else
         {
